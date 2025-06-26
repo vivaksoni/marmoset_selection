@@ -1,0 +1,134 @@
+initialize() {
+	
+	defineGlobal("start", clock());
+
+	defineConstant("Nanc", 10000); //Ancestral population size (to which everything is scaled)
+	defineConstant("Ts", asInteger(d_Ts * Nanc));
+	defineConstant("burnin", asInteger(10*Nanc)); //10N burnin
+
+	//Chromosome with 2 genes, each comprised of 9 130bp exons, 8 1591bp introns, and separated by a 16489bp intergenic region
+	//Total chromosome length: 91161
+	defineConstant("exonLength", 130);
+	defineConstant("exonsPerGene", 9); 
+	defineConstant("intronsPerGene", 8); 
+	defineConstant("intronLength", 1591);
+	defineConstant("geneLength", (exonLength * exonsPerGene) + (intronLength * intronsPerGene));
+	defineConstant("intergenicLength", 16489); 
+	defineConstant("totalGenes", 3);
+	
+	
+	mu = 0.98e-8;
+	initializeMutationRate(mu);
+
+	
+	// mutation types:
+	//2Nes = [0, -1, -10, -100, -10000], s = [0.0, -0.0001, -0.001, -0.01, -1]
+	initializeMutationType("m1", 0.5, "f", 0.0); //selectively neutral
+	initializeMutationType("m2", 0.5, "s", "return runif(1, -10/(Nanc*2), -1/(Nanc*2));"); //weakly deleterious (1<2Nes<10)
+	initializeMutationType("m3", 0.5, "s", "return runif(1, -100/(Nanc*2), -10/(Nanc*2));"); //moderately deleterious (10<2Nes<100)
+	initializeMutationType("m4", 0.5, "s", "return runif(1, -1000/(Nanc*2), -100/(Nanc*2));"); //strongly deleterious (100<2Nes<1000)
+	// Genomic elements:
+	initializeGenomicElementType("g1", m1, 1.0); //intergenic
+	initializeGenomicElementType("g2", m1, 1.0); //intron
+	initializeGenomicElementType("g3", c(m1, m2, m3, m4), c(0.5, 0.3, 0.2, 0)); //exon
+	//initializeGenomicElementType("g3", c(m1, m2, m3, m4), c(d_f0, d_f1, d_f2, d_f3)); //exon
+	initializeGenomicElementType("g4", m1, 1.0); //exon synonymous
+	initializeMutationType("m0", 1, "f", d_Nes/(Nanc*2));
+	
+	//Initialise genomic element
+	//Chromosome with {totalGenes} no. ofgenes, each comprised of {exonsPerGene} {exonLength}bp exons;
+	//{intronsPerGene} {intronLength}bp introns, and separated by a {intergenicLength}bp intergenic region
+	//Loop through number of genes
+	for (gene in 1:totalGenes)
+	{
+		//Set gene start
+		geneStart = (gene-1) * (geneLength+intergenicLength) + 1;
+		//Loop through elements within gene (ie number of exons)
+		for (element in 1:exonsPerGene)
+		{
+			//Set exonStart and end coordinates
+			exonStart = geneStart + (exonLength * (element-1)) + (intronLength * (element-1));
+			exonEnd = exonStart+(exonLength-1);
+			for (i in seq(exonStart, exonEnd-1, 3))
+			{
+				//initializeGenomicElement(g3, i, i+1);
+				//initializeGenomicElement(g4, i+2, i+2);
+				initializeGenomicElement(g3, i, i+2);
+			}
+			//Each gene contains one less intron than exons
+			if (element < exonsPerGene)
+			{
+				//Set intron coordinates
+				intronStart = exonStart + exonLength;
+				intronEnd = intronStart+(intronLength-1);
+				initializeGenomicElement(g2, intronStart, intronEnd);
+			}
+		}
+		//Set intergenic region coordinates
+		intergenicStart = exonEnd + 1;
+		intergenicEnd = intergenicStart + (intergenicLength-1);
+		initializeGenomicElement(g1, intergenicStart, intergenicEnd);
+	}
+	
+	
+
+	rr = 1e-8;
+	initializeRecombinationRate(rr);
+
+}
+
+///
+/// **Demography:**
+
+1 early() {
+	sim.addSubpop("p1", Nanc);
+	community.rescheduleScriptBlock(s1, start=burnin, end=burnin);
+	community.rescheduleScriptBlock(s2, start=burnin, end=burnin+1000000);
+
+}
+
+
+s1 late() {
+	// save the state of the simulation
+	sim.outputFull(tempdir() + "slim_" + d_repID + ".txt");
+	
+	// introduce the sweep mutation
+	target = sample(p1.genomes, 1);
+	target.addNewDrawnMutation(m0, 37336);
+}
+
+s2 late() {
+	if (sim.countOfMutationsOfType(m0) == 0)
+	{
+		fixed = (sum(sim.substitutions.mutationType == m0) == 1);
+		
+		if (fixed)
+		{
+			cat(sim.cycle + ": FIXED\n");
+			defineConstant("END_TICK", community.tick + Ts);
+			community.deregisterScriptBlock(self);
+		}
+		else
+		{
+			cat(sim.cycle + ": LOST - RESTARTING\n");
+			
+			// go back to tick 1000
+			sim.readFromPopulationFile(tempdir() + "slim_" + d_repID + ".txt");
+			
+			// start a newly seeded run
+			setSeed(rdunif(1, 0, asInteger(2^62) - 1));
+			
+			// re-introduce the sweep mutation
+			target = sample(p1.genomes, 1);
+			target.addNewDrawnMutation(m0, 37336);
+		}
+	}
+}
+
+
+END_TICK late() {
+    p1.outputVCFSample(15, F, "*", T, d_folder + "/" + d_Ts + "_" + d_Nes + "_rep" + d_repID + ".vcf");
+    sim.outputFixedMutations(d_folder + "/" + d_Ts + "_" + d_Nes + "_rep" + d_repID + ".fixed", append=F);
+}
+
+

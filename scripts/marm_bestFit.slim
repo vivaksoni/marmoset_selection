@@ -1,0 +1,94 @@
+// Keywords: nonWF, non-Wright-Fisher
+
+initialize() {
+
+	//start the clock
+	defineGlobal("start", clock());
+	initializeSLiMModelType("nonWF");
+	initializeSLiMOptions(keepPedigrees=T);	
+        defineConstant("Nanc", 61198); //Ancestral population size (to which everything is scaled)
+        defineConstant("Nbot", asInteger(Nanc * 0.293)); //Population size at bottleneck
+        defineConstant("Ncurr", 33830); //Population size at time of sampling
+        defineConstant("Tbot", asInteger(0.0287*Nanc)); //Time of bottleneck
+	defineConstant("burnin", asInteger(10*Nanc)); //10N burnin
+	defineConstant("simEnd", asInteger(burnin + Tbot)); //SimEnd is burnin + no. of gens since bottleneck	
+
+	defineConstant("r", ((Ncurr/Nbot)^(1/Tbot))-1); //Growth rate calculated from Ncurr, Nbot and Tbot
+	
+	
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	m1.convertToSubstitution = T;
+	
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, d_len);
+	initializeMutationRate(2.5e-8);
+	initializeRecombinationRate(1e-8);
+}
+reproduction() {
+	// randomize the order of p1.individuals
+	parents = sample(p1.individuals, p1.individualCount);
+	
+	// draw monogamous pairs and generate litters
+	for (i in seq(0, p1.individualCount - 2, by=2))
+	{
+		parent1 = parents[i];
+		parent2 = parents[i + 1];
+		litterSize = 2;
+		
+		for (j in seqLen(litterSize))
+			p1.addCrossed(parent1, parent2);
+	}
+	
+	// disable this callback for this cycle
+	self.active = 0;
+}
+1 early() {
+	sim.addSubpop("p1", Nanc);
+	community.rescheduleScriptBlock(s1, start=simEnd, end=simEnd);
+
+}
+early() {
+	//Constant pop size during burnin
+	if (sim.cycle < burnin){
+		p1.fitnessScaling = Nanc / p1.individualCount;
+	}
+	else
+	//Bottleneck followed by exponential growth decline for remainder of simulation
+	{
+	   t = sim.cycle - burnin;
+	   p1_size = round(Nbot * (1+ r)^t);
+		p1.fitnessScaling = (p1_size) / p1.individualCount;
+	}
+}
+
+
+//late() {
+//	inds = p1.individuals;
+//	catn(sim.cycle + ": " + size(inds) + " (" + max(inds.age) + ")");
+//}
+
+
+s1 late() {
+    ids = p1.individuals.pedigreeParentIDs;
+   
+    id_strings = NULL;
+    for (ind in p1.individuals) {
+        ids = ind.pedigreeParentIDs;
+        ind_id = strsplit(substr(paste(ind), 14), ">")[0];
+        id_string = paste(ind_id, ind.pedigreeID, ids, sep='\t');
+        writeFile(d_folder + "/pedigreeIDs_" + d_paramID + "_rep" + d_repID + ".txt", id_string, append=T);
+        //catn(id_string);
+        id_strings = c(id_strings, id_string);
+    }
+    ids = p1.individuals.pedigreeParentIDs;
+//    catn(size(ids) + " ids");
+//    catn(size(unique(ids)) + " unique ids");
+//    catn(size(id_strings) + " id strings");
+//    catn(size(unique(id_strings)) + " unique id strings");
+    p1.individuals.genomes.outputVCF(d_folder + "/" + d_paramID + "_rep" + d_repID + ".vcf");
+    
+//   print("Peak Mem Usage: " + usage(peak = T));
+//	print("Runtime: " + (clock()-start));
+	inds = p1.individuals;
+	print("Simulation complete, final population size: " + size(inds));
+}
