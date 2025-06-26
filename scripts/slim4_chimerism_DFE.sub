@@ -1,0 +1,32 @@
+#universe = container
+#container_image = osdf:///ospool/ap21/data/vsoni11/slim.sif
+#+SingularityImage = "osdf:///ospool/ap21/data/vsoni11/slim.sif"
+
+#slim4_DFE.sub
+log = slim4_reports/DFE2_$(Cluster).log
+output = slim4_reports/DFE2_$(Process).out
+error = slim4_reports/DFE2_$(Process).err
++JobDurationCategory = "Long"
+executable = slim4_chimerism_DFE.sh
+
+
+transfer_input_files = /home/vsoni11/my-software/build.tar.gz, /home/vsoni11/env5.tar.gz, /home/vsoni11/chimerism/scripts.tar.gz
+
+transfer_output_files = DFE_$(Process).tar.gz
+#transfer_output_remaps = "$(Process).tar.gz = /home/vsoni11/$(Process).tar.gz"
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+#requirements = (OSGVO_OS_STRING == "RHEL 7")
+#requirements = HAS_SINGULARITY != True
+#requirements = (GlideIN_Site != "UConn-HPC")
+request_memory = 8GB
+#^ Usually 5 
+request_disk = 5GB 
+#^ Usually 3
+request_cpus = 1
+
+
+max_idle = 2000
+queue arguments from /home/vsoni11/chimerism/params/DFE3.txt
