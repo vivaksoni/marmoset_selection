@@ -29,7 +29,7 @@ scripts: Contains SLiM and python scripts to perform all analyses:
     
     get_input_for_BM.py: Python script to generate input file for B0MAF balancing selection scans.
     
-    get_input_for_SF2.py: Pyhton script to generate input file for SweepFinder2 selective sweep scans.
+    get_input_for_SF2.py: Python script to generate input file for SweepFinder2 selective sweep scans.
     
     get_summary_stats.py: Python script to generate summary statistics across sliding windows from vcf input file.
     
